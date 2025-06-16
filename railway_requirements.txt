@@ -4,3 +4,4 @@ aiohttp==3.9.0
 pydantic==1.10.13
 python-dotenv==1.0.0
 requests==2.31.0
+google-api-python-client==2.110.0
