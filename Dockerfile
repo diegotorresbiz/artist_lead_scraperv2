@@ -36,5 +36,5 @@ USER appuser
 # Expose port
 EXPOSE 8000
 
-# Start the application using main.py which exists in your repo
-CMD ["python", "main.py"]
+# Start the application using the new API service
+CMD ["python", "api_outreach_service.py"]
