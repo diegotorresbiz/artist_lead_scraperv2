@@ -6,6 +6,8 @@ services:
     dockerfilePath: ./Dockerfile.render
     plan: starter
     region: oregon
+    buildCommand: ""
+    startCommand: ""
     envVars:
       - key: YOUTUBE_API_KEY
         sync: false
