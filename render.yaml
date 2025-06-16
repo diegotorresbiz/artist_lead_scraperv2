@@ -4,6 +4,7 @@ services:
     name: outreach-agent-scraper
     env: docker
     dockerfilePath: ./Dockerfile.render
+    dockerContext: .
     plan: starter
     region: oregon
     envVars:
