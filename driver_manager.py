@@ -98,6 +98,9 @@ class DriverManager:
                             os.environ.get("HEROKU") or
                             os.environ.get("NODE_ENV") == "production")
             
+            # Initialize driver_path to None
+            driver_path = None
+            
             if is_production:
                 print("🚂 Production environment detected - applying crash prevention")
                 
@@ -164,6 +167,9 @@ class DriverManager:
                     else:
                         driver_path = downloaded_path
                     
+                    if not driver_path:
+                        raise Exception("Could not locate ChromeDriver after download")
+                    
                     if driver_path and os.path.exists(driver_path):
                         # Ensure executable permissions
                         os.chmod(driver_path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
@@ -184,8 +190,6 @@ class DriverManager:
                 except Exception as e:
                     print(f"   ❌ ChromeDriver download failed: {str(e)}")
                     raise Exception(f"ChromeDriver not available: {str(e)}")
-                
-                service = Service(driver_path)
                 
             else:
                 # Local development settings
@@ -218,11 +222,16 @@ class DriverManager:
                     
                     # Ensure executable permissions
                     os.chmod(driver_path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
-                    service = Service(driver_path)
                     
                 except Exception as e:
                     print(f"   WebDriver manager failed: {str(e)}")
                     raise Exception(f"ChromeDriver setup failed: {str(e)}")
+            
+            # Ensure we have a valid driver_path before creating the service
+            if not driver_path:
+                raise Exception("ChromeDriver path not set - setup failed")
+            
+            service = Service(driver_path)
             
             print("🔧 Initializing crash-resistant WebDriver...")
             self.driver = webdriver.Chrome(service=service, options=chrome_options)
