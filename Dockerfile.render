@@ -16,9 +16,6 @@ RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add
     && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-# Install ChromeDriver - using webdriver-manager to auto-match Chrome version
-# We'll let the Python script handle ChromeDriver installation to ensure version compatibility
-
 # Set up working directory
 WORKDIR /app
 
@@ -27,8 +24,13 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy all Python files
-COPY *.py .
+# Copy all Python files explicitly
+COPY api_outreach_service.py .
+COPY artist_lead_scraper.py .
+COPY youtube_api_scraper.py .
+COPY driver_manager.py .
+COPY soundcloud_scraper.py .
+COPY artist_info_extractor.py .
 
 # Create a non-root user for security
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
