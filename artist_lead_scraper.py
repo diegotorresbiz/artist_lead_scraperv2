@@ -11,6 +11,9 @@ class ArtistLeadScraper:
         self.youtube_scraper = YouTubeScraper()
         self.soundcloud_scraper = SoundCloudScraper(self.driver)
         
+        # Connect driver manager to soundcloud scraper for crash recovery
+        self.soundcloud_scraper.set_driver_manager(self.driver_manager)
+        
     def search_youtube_producers(self, search_term: str, num_results: int = 3) -> List[str]:
         """Search YouTube for beat producers and extract their names from channel names."""
         return self.youtube_scraper.search_youtube_producers(search_term, num_results)
