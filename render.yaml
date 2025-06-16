@@ -2,7 +2,7 @@
 services:
   - type: web
     name: outreach-agent-scraper
-    env: docker
+    runtime: docker
     dockerfilePath: ./Dockerfile.render
     dockerContext: .
     plan: starter
