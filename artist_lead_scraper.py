@@ -1,12 +1,12 @@
 from typing import List, Dict
 from driver_manager import DriverManager
-from youtube_api_scraper import YouTubeAPIScraper
+from youtube_scraper import YouTubeScraper
 from soundcloud_scraper import SoundCloudScraper
 
 class ArtistLeadScraper:
     def __init__(self):
-        # Initialize YouTube API scraper (no WebDriver needed)
-        self.youtube_scraper = YouTubeAPIScraper()
+        # Initialize YouTube scraper (no WebDriver needed)
+        self.youtube_scraper = YouTubeScraper()
         
         # Delay WebDriver initialization until we actually need it for SoundCloud
         self.driver_manager = None
@@ -24,20 +24,20 @@ class ArtistLeadScraper:
             print("✅ WebDriver initialized for SoundCloud")
         
     def search_youtube_producers(self, search_term: str, num_results: int = 3) -> List[str]:
-        """Search YouTube for beat producers using YouTube API (no WebDriver needed)."""
-        print(f"📺 STEP 1: Searching YouTube API for producers with term: '{search_term}'")
+        """Search YouTube for beat producers using YouTube scraping (no WebDriver needed)."""
+        print(f"📺 STEP 1: Searching YouTube for producers with term: '{search_term}'")
         
         try:
-            # Use the existing YouTube API scraper method
+            # Use the existing YouTube scraper method
             producers = self.youtube_scraper.search_youtube_producers(search_term, num_results)
-            print(f"📺 STEP 1 RESULT: Found {len(producers)} producers via YouTube API: {producers}")
+            print(f"📺 STEP 1 RESULT: Found {len(producers)} producers via YouTube scraping: {producers}")
             return producers
         except Exception as e:
-            print(f"❌ YouTube API search failed: {str(e)}")
+            print(f"❌ YouTube search failed: {str(e)}")
             print("   This could be due to:")
-            print("   - Missing YOUTUBE_API_KEY environment variable")
-            print("   - API quota exceeded")
+            print("   - YouTube blocking the request")
             print("   - Network connectivity issues")
+            print("   - YouTube structure changes")
             return []
     
     def search_soundcloud_artists(self, producer_name: str) -> List[Dict]:
