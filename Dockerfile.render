@@ -34,5 +34,5 @@ USER appuser
 # Expose port
 EXPOSE 8000
 
-# Start the application
-CMD ["python", "api_outreach_service.py"]
+# Start the application with the correct file name
+CMD ["python", "outreach_service.py"]
