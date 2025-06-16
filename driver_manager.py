@@ -17,24 +17,25 @@ class DriverManager:
         """Check if Chrome and ChromeDriver are available in the system."""
         print("\n🔍 SYSTEM DEPENDENCY CHECK:")
         
-        # Check if we're in Railway environment
-        is_railway = os.environ.get("RAILWAY_ENVIRONMENT")
-        print(f"   Railway Environment: {is_railway}")
+        # Check if we're in production environment
+        is_production = (os.environ.get("RAILWAY_ENVIRONMENT") or 
+                        os.environ.get("RENDER") or 
+                        os.environ.get("HEROKU") or
+                        os.environ.get("NODE_ENV") == "production")
+        print(f"   Production Environment: {is_production}")
         
-        # Check Chrome binary locations - including Nixpacks paths
+        # Check Chrome binary locations
         chrome_paths = [
-            # Nixpacks paths (Railway with nixpacks.toml)
-            "/nix/store/*/bin/google-chrome",
-            "/nix/store/*/bin/google-chrome-stable",
-            "/nix/store/*/bin/chromium",
-            "/nix/store/*/bin/chromium-browser",
-            # Traditional paths
             "/usr/bin/google-chrome",
             "/usr/bin/google-chrome-stable", 
             "/usr/bin/chromium-browser",
             "/opt/google/chrome/chrome",
             "/usr/bin/chromium",
-            "/snap/bin/chromium"
+            "/snap/bin/chromium",
+            "/nix/store/*/bin/google-chrome",
+            "/nix/store/*/bin/google-chrome-stable",
+            "/nix/store/*/bin/chromium",
+            "/nix/store/*/bin/chromium-browser"
         ]
         
         chrome_found = None
@@ -58,74 +59,28 @@ class DriverManager:
             if chrome_found:
                 break
         
-        # Check ChromeDriver locations - including Nixpacks paths
-        driver_paths = [
-            # Nixpacks paths
-            "/nix/store/*/bin/chromedriver",
-            # Traditional paths
-            "/usr/bin/chromedriver",
-            "/usr/local/bin/chromedriver",
-            "/opt/homebrew/bin/chromedriver",
-            "/snap/bin/chromedriver"
-        ]
-        
-        driver_found = None
-        for path_pattern in driver_paths:
-            # Handle glob patterns for nixpacks
-            if "*" in path_pattern:
-                matching_paths = glob.glob(path_pattern)
-                for path in matching_paths:
-                    if os.path.exists(path) and os.access(path, os.X_OK):
-                        print(f"   ✅ ChromeDriver found at: {path}")
-                        driver_found = path
-                        break
-            else:
-                if os.path.exists(path_pattern):
-                    print(f"   ✅ ChromeDriver found at: {path_pattern}")
-                    # Check if it's executable
-                    if os.access(path_pattern, os.X_OK):
-                        print(f"   ✅ ChromeDriver is executable")
-                        driver_found = path_pattern
-                    else:
-                        print(f"   ⚠️  ChromeDriver exists but not executable")
-                        try:
-                            os.chmod(path_pattern, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
-                            print(f"   ✅ Made ChromeDriver executable")
-                            driver_found = path_pattern
-                        except Exception as e:
-                            print(f"   ❌ Could not make executable: {e}")
-                    break
-                else:
-                    print(f"   ❌ ChromeDriver not found at: {path_pattern}")
-            
-            if driver_found:
-                break
-        
         # Try to get Chrome version
         if chrome_found:
             try:
                 result = subprocess.run([chrome_found, "--version"], 
                                       capture_output=True, text=True, timeout=10)
                 if result.returncode == 0:
-                    print(f"   ✅ Chrome version: {result.stdout.strip()}")
+                    chrome_version = result.stdout.strip()
+                    print(f"   ✅ Chrome version: {chrome_version}")
+                    
+                    # Extract major version number for ChromeDriver compatibility
+                    import re
+                    version_match = re.search(r'(\d+)\.\d+\.\d+\.\d+', chrome_version)
+                    if version_match:
+                        major_version = version_match.group(1)
+                        print(f"   📋 Chrome major version: {major_version}")
+                        return chrome_found, major_version
                 else:
                     print(f"   ❌ Chrome version check failed: {result.stderr}")
             except Exception as e:
                 print(f"   ❌ Chrome version check error: {str(e)}")
         
-        # Try to get ChromeDriver version
-        if driver_found:
-            try:
-                result = subprocess.run([driver_found, "--version"], 
-                                      capture_output=True, text=True, timeout=10)
-                if result.returncode == 0:
-                    print(f"   ✅ ChromeDriver version: {result.stdout.strip()}")
-                else:
-                    print(f"   ❌ ChromeDriver version check failed: {result.stderr}")
-            except Exception as e:
-                print(f"   ❌ ChromeDriver version check error: {str(e)}")
-        
-        return chrome_found, driver_found
+        return chrome_found, None
     
     def setup_driver(self):
         """Set up the Chrome WebDriver with crash-resistant options."""
@@ -133,12 +88,17 @@ class DriverManager:
         
         try:
             # Check system dependencies first
-            chrome_binary, driver_path = self.check_system_dependencies()
+            chrome_binary, chrome_major_version = self.check_system_dependencies()
             
             chrome_options = Options()
             
-            # Enhanced Railway/Production optimizations
-            if os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RENDER") or os.environ.get("HEROKU"):
+            # Production/Cloud environment optimizations
+            is_production = (os.environ.get("RAILWAY_ENVIRONMENT") or 
+                            os.environ.get("RENDER") or 
+                            os.environ.get("HEROKU") or
+                            os.environ.get("NODE_ENV") == "production")
+            
+            if is_production:
                 print("🚂 Production environment detected - applying crash prevention")
                 
                 # Core stability options - CRITICAL for preventing crashes
@@ -153,94 +113,79 @@ class DriverManager:
                 chrome_options.add_argument("--memory-pressure-off")
                 chrome_options.add_argument("--max-memory-usage=512")
                 chrome_options.add_argument("--aggressive-cache-discard")
-                chrome_options.add_argument("--disable-background-timer-throttling")
-                chrome_options.add_argument("--disable-backgrounding-occluded-windows")
-                chrome_options.add_argument("--disable-renderer-backgrounding")
                 
                 # CRITICAL: Process stability
                 chrome_options.add_argument("--single-process")
                 chrome_options.add_argument("--no-zygote")
                 chrome_options.add_argument("--disable-ipc-flooding-protection")
-                chrome_options.add_argument("--disable-web-security")
                 
                 # CRITICAL: Reduce resource usage to prevent crashes
                 chrome_options.add_argument("--disable-extensions")
                 chrome_options.add_argument("--disable-plugins")
-                chrome_options.add_argument("--disable-images")  # Save memory
-                chrome_options.add_argument("--disable-javascript")  # Save CPU/memory
+                chrome_options.add_argument("--disable-images")
+                chrome_options.add_argument("--disable-javascript")
                 chrome_options.add_argument("--disable-default-apps")
                 chrome_options.add_argument("--disable-sync")
-                chrome_options.add_argument("--disable-translate")
-                chrome_options.add_argument("--disable-features=VizDisplayCompositor,TranslateUI")
-                
-                # CRITICAL: Network and loading optimizations
-                chrome_options.add_argument("--disable-background-networking")
-                chrome_options.add_argument("--disable-background-mode")
-                chrome_options.add_argument("--disable-client-side-phishing-detection")
-                chrome_options.add_argument("--disable-component-update")
-                chrome_options.add_argument("--disable-domain-reliability")
-                chrome_options.add_argument("--disable-field-trial-config")
                 
                 # CRITICAL: Window and display - smaller to save memory
-                chrome_options.add_argument("--window-size=800,600")  # Smaller window
-                chrome_options.add_argument("--virtual-time-budget=10000")  # Shorter timeout
-                chrome_options.add_argument("--disable-accelerated-2d-canvas")
-                chrome_options.add_argument("--disable-accelerated-video-decode")
+                chrome_options.add_argument("--window-size=800,600")
+                chrome_options.add_argument("--virtual-time-budget=10000")
                 
-                # CRITICAL: User agent
+                # User agent
                 chrome_options.add_argument("--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                 
                 # CRITICAL: Crash recovery options
                 chrome_options.add_argument("--disable-crash-reporter")
                 chrome_options.add_argument("--disable-logging")
                 chrome_options.add_argument("--silent")
-                chrome_options.add_argument("--disable-breakpad")
                 
-                # Additional memory and stability options
-                chrome_options.add_argument("--disable-hang-monitor")
-                chrome_options.add_argument("--disable-prompt-on-repost")
-                chrome_options.add_argument("--disable-client-side-phishing-detection")
-                chrome_options.add_argument("--disable-component-extensions-with-background-pages")
+                if chrome_binary:
+                    chrome_options.binary_location = chrome_binary
+                    print(f"   Using Chrome: {chrome_binary}")
+                else:
+                    raise Exception("❌ Chrome binary not found in production environment")
                 
-                if not chrome_binary:
-                    # Try alternative Chrome detection methods with nixpacks paths
-                    alternative_patterns = [
-                        "/nix/store/*/bin/google-chrome-stable",
-                        "/nix/store/*/bin/chromium-browser", 
-                        "/nix/store/*/bin/chromium",
-                        "/usr/bin/google-chrome-stable",
-                        "/usr/bin/chromium-browser",
-                        "/usr/bin/chromium",
-                        "/snap/bin/chromium"
-                    ]
+                # Download compatible ChromeDriver using webdriver-manager
+                print("   🔄 Downloading compatible ChromeDriver...")
+                try:
+                    # Use webdriver-manager to auto-download compatible version
+                    downloaded_path = ChromeDriverManager().install()
+                    print(f"   Downloaded ChromeDriver to: {downloaded_path}")
                     
-                    for alt_pattern in alternative_patterns:
-                        if "*" in alt_pattern:
-                            matching_paths = glob.glob(alt_pattern)
-                            for alt_path in matching_paths:
-                                if os.path.exists(alt_path) and os.access(alt_path, os.X_OK):
-                                    chrome_binary = alt_path
-                                    print(f"   🔄 Using alternative Chrome: {chrome_binary}")
-                                    break
-                        else:
-                            if os.path.exists(alt_pattern):
-                                chrome_binary = alt_pattern
-                                print(f"   🔄 Using alternative Chrome: {chrome_binary}")
+                    # Handle THIRD_PARTY_NOTICES issue
+                    if 'THIRD_PARTY_NOTICES' in downloaded_path:
+                        dir_path = os.path.dirname(downloaded_path)
+                        possible_drivers = glob.glob(os.path.join(dir_path, "*chromedriver*"))
+                        for possible in possible_drivers:
+                            if 'THIRD_PARTY_NOTICES' not in possible and os.access(possible, os.X_OK):
+                                driver_path = possible
+                                print(f"   Found actual ChromeDriver: {driver_path}")
                                 break
+                    else:
+                        driver_path = downloaded_path
+                    
+                    if driver_path and os.path.exists(driver_path):
+                        # Ensure executable permissions
+                        os.chmod(driver_path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
+                        print(f"   ✅ Using compatible ChromeDriver: {driver_path}")
                         
-                        if chrome_binary:
-                            break
+                        # Verify ChromeDriver version
+                        try:
+                            result = subprocess.run([driver_path, "--version"], 
+                                                  capture_output=True, text=True, timeout=10)
+                            if result.returncode == 0:
+                                print(f"   ✅ ChromeDriver version: {result.stdout.strip()}")
+                        except Exception as e:
+                            print(f"   ⚠️  ChromeDriver version check failed: {str(e)}")
+                        
+                    else:
+                        raise Exception("Could not locate ChromeDriver after download")
+                    
+                except Exception as e:
+                    print(f"   ❌ ChromeDriver download failed: {str(e)}")
+                    raise Exception(f"ChromeDriver not available: {str(e)}")
                 
-                if not chrome_binary:
-                    raise Exception("❌ Chrome binary not found. Make sure nixpacks.toml includes 'google-chrome' in nixPkgs")
-                
-                if not driver_path:
-                    raise Exception("❌ ChromeDriver not found. Make sure nixpacks.toml includes 'chromedriver' in nixPkgs")
-                
-                chrome_options.binary_location = chrome_binary
                 service = Service(driver_path)
-                print(f"   Using Chrome: {chrome_binary}")
-                print(f"   Using ChromeDriver: {driver_path}")
                 
             else:
                 # Local development settings
@@ -250,45 +195,41 @@ class DriverManager:
                 chrome_options.add_argument("--disable-dev-shm-usage")
                 chrome_options.add_argument("--window-size=1920,1080")
                 
-                if driver_path:
+                # Try webdriver-manager for local development
+                print("   Attempting to download compatible ChromeDriver...")
+                try:
+                    downloaded_path = ChromeDriverManager().install()
+                    print(f"   Downloaded ChromeDriver to: {downloaded_path}")
+                    
+                    # Handle THIRD_PARTY_NOTICES issue
+                    if 'THIRD_PARTY_NOTICES' in downloaded_path:
+                        dir_path = os.path.dirname(downloaded_path)
+                        possible_drivers = glob.glob(os.path.join(dir_path, "*chromedriver*"))
+                        for possible in possible_drivers:
+                            if 'THIRD_PARTY_NOTICES' not in possible and os.access(possible, os.X_OK):
+                                driver_path = possible
+                                print(f"   Found actual ChromeDriver: {driver_path}")
+                                break
+                    else:
+                        driver_path = downloaded_path
+                    
+                    if not driver_path:
+                        raise Exception("Could not locate ChromeDriver after download")
+                    
+                    # Ensure executable permissions
+                    os.chmod(driver_path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
                     service = Service(driver_path)
-                    print(f"   Using system ChromeDriver: {driver_path}")
-                else:
-                    # Try webdriver-manager as fallback
-                    print("   Attempting to download ChromeDriver...")
-                    try:
-                        downloaded_path = ChromeDriverManager().install()
-                        print(f"   Downloaded ChromeDriver to: {downloaded_path}")
-                        
-                        # Handle THIRD_PARTY_NOTICES issue
-                        if 'THIRD_PARTY_NOTICES' in downloaded_path:
-                            dir_path = os.path.dirname(downloaded_path)
-                            possible_drivers = glob.glob(os.path.join(dir_path, "*chromedriver*"))
-                            for possible in possible_drivers:
-                                if 'THIRD_PARTY_NOTICES' not in possible and os.access(possible, os.X_OK):
-                                    driver_path = possible
-                                    print(f"   Found actual ChromeDriver: {driver_path}")
-                                    break
-                        else:
-                            driver_path = downloaded_path
-                        
-                        if not driver_path:
-                            raise Exception("Could not locate ChromeDriver after download")
-                        
-                        # Ensure executable permissions
-                        os.chmod(driver_path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
-                        service = Service(driver_path)
-                        
-                    except Exception as e:
-                        print(f"   WebDriver manager failed: {str(e)}")
-                        raise Exception(f"ChromeDriver setup failed: {str(e)}")
+                    
+                except Exception as e:
+                    print(f"   WebDriver manager failed: {str(e)}")
+                    raise Exception(f"ChromeDriver setup failed: {str(e)}")
             
             print("🔧 Initializing crash-resistant WebDriver...")
             self.driver = webdriver.Chrome(service=service, options=chrome_options)
             
             # CRITICAL: Conservative timeouts to prevent hangs/crashes
-            self.driver.set_page_load_timeout(15)  # Much shorter timeout
-            self.driver.implicitly_wait(5)  # Shorter wait
+            self.driver.set_page_load_timeout(15)
+            self.driver.implicitly_wait(5)
             print("✅ Crash-resistant Chrome WebDriver initialized successfully")
             
             # Test the driver
@@ -302,14 +243,19 @@ class DriverManager:
             print(f"   Exception type: {type(e).__name__}")
             
             # Enhanced error diagnostics
-            if "Chrome binary" in str(e) or "chrome" in str(e).lower():
+            if "This version of ChromeDriver only supports Chrome version" in str(e):
+                print("\n🔍 CHROME/CHROMEDRIVER VERSION MISMATCH:")
+                print("   The ChromeDriver version doesn't match your Chrome version")
+                print("   webdriver-manager should auto-download compatible version")
+                print("   This error suggests the auto-download failed")
+            elif "Chrome binary" in str(e) or "chrome" in str(e).lower():
                 print("\n🔍 CHROME INSTALLATION ISSUE:")
-                print("   Try: Make sure nixpacks.toml includes 'google-chrome' in nixPkgs")
-                print("   Or: apt-get install -y chromium-browser")
+                print("   Try: Make sure Chrome is installed: apt-get install -y google-chrome-stable")
+                print("   Or: Use chromium: apt-get install -y chromium-browser")
             elif "chromedriver" in str(e).lower():
                 print("\n🔍 CHROMEDRIVER ISSUE:")
-                print("   Try: Make sure nixpacks.toml includes 'chromedriver' in nixPkgs")
-                print("   Check version compatibility between Chrome and ChromeDriver")
+                print("   ChromeDriver will be downloaded automatically")
+                print("   Check Chrome and ChromeDriver version compatibility")
             elif "timeout" in str(e).lower():
                 print("\n🔍 TIMEOUT ISSUE:")
                 print("   Chrome may be taking too long to start")
