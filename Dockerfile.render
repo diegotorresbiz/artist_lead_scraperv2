@@ -1,4 +1,3 @@
-
 FROM python:3.11-slim
 
 # Install system dependencies for Chrome
@@ -24,8 +23,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy all Python files from the repository
 COPY *.py .
+
+# Debug: List files to verify they were copied
+RUN ls -la /app/
 
 # Create a non-root user for security
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
@@ -34,5 +36,5 @@ USER appuser
 # Expose port
 EXPOSE 8000
 
-# Start the application with the correct file name
-CMD ["python", "outreach_service.py"]
+# Start the application using main.py which exists in your repo
+CMD ["python", "main.py"]
