@@ -1,5 +1,4 @@
 from typing import List, Dict
-from driver_manager import DriverManager
 from youtube_scraper import YouTubeScraper
 import requests
 import re
@@ -9,10 +8,6 @@ class ArtistLeadScraper:
     def __init__(self):
         # Initialize YouTube scraper (no WebDriver needed)
         self.youtube_scraper = YouTubeScraper()
-        
-        # We'll no longer need WebDriver for SoundCloud
-        self.driver_manager = None
-        self.driver = None
         
     def search_youtube_producers(self, search_term: str, num_results: int = 3) -> List[str]:
         """Search YouTube for beat producers with enhanced fallback logic."""
@@ -186,8 +181,6 @@ class ArtistLeadScraper:
         fallback_username = channel_name.lower().replace(' ', '').replace('official', '')
         return {'instagram': f"@{fallback_username}"}
 
-    # ... keep existing code (fallback methods)
-    
     def _generate_fallback_producers(self, search_term: str) -> List[str]:
         """Generate realistic producer names based on the search term."""
         # Popular producer naming patterns
