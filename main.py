@@ -12,15 +12,11 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add CORS middleware
+# Add CORS middleware - FIXED
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://agent-dashboard-drab.vercel.app", 
-        "http://localhost:3000",
-        "*"  # Allow all origins for Railway deployment
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],  # Allow all origins
+    allow_credentials=False,  # CRITICAL: Must be False when using wildcard origins
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -129,9 +125,9 @@ async def scrape_leads(request: ScrapeRequest):
 @app.get("/health")
 async def health_check():
     return {
-        "status": "ok",
-        "timestamp": "2024-01-01T00:00:00Z",
-        "uptime": 0
+        "status": "healthy",
+        "service": "artist-lead-scraper",
+        "cors_enabled": True
     }
 
 if __name__ == "__main__":
