@@ -82,6 +82,52 @@ class DriverManager:
         
         return chrome_found, None
     
+    def find_chromedriver_executable(self, base_path):
+        """Find the actual ChromeDriver executable from webdriver-manager download path."""
+        print(f"   🔍 Searching for ChromeDriver executable in: {base_path}")
+        
+        # Common ChromeDriver executable names
+        driver_names = ['chromedriver', 'chromedriver.exe']
+        
+        # First, check if the base_path is already the executable
+        if os.path.basename(base_path) in driver_names and os.access(base_path, os.X_OK):
+            print(f"   ✅ Direct executable found: {base_path}")
+            return base_path
+        
+        # Get the directory from the base path
+        if os.path.isfile(base_path):
+            search_dir = os.path.dirname(base_path)
+        else:
+            search_dir = base_path
+        
+        print(f"   🔍 Searching in directory: {search_dir}")
+        
+        # Search in the directory and subdirectories
+        for root, dirs, files in os.walk(search_dir):
+            for file in files:
+                if file in driver_names:
+                    full_path = os.path.join(root, file)
+                    if os.access(full_path, os.X_OK):
+                        print(f"   ✅ Found ChromeDriver executable: {full_path}")
+                        return full_path
+        
+        # If not found, try to find any file with 'chromedriver' in the name
+        for root, dirs, files in os.walk(search_dir):
+            for file in files:
+                if 'chromedriver' in file.lower() and not file.endswith('.txt'):
+                    full_path = os.path.join(root, file)
+                    # Make it executable if it isn't already
+                    try:
+                        os.chmod(full_path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
+                        if os.access(full_path, os.X_OK):
+                            print(f"   ✅ Found and made executable: {full_path}")
+                            return full_path
+                    except Exception as e:
+                        print(f"   ⚠️ Could not make executable: {full_path} - {str(e)}")
+        
+        print(f"   ❌ No ChromeDriver executable found in {search_dir}")
+        return None
+    
     def setup_driver(self):
         """Set up the Chrome WebDriver with crash-resistant options."""
         print("\n🚀 SETTING UP CRASH-RESISTANT CHROME WEBDRIVER")
@@ -155,37 +201,24 @@ class DriverManager:
                     downloaded_path = ChromeDriverManager().install()
                     print(f"   Downloaded ChromeDriver to: {downloaded_path}")
                     
-                    # Handle THIRD_PARTY_NOTICES issue
-                    if 'THIRD_PARTY_NOTICES' in downloaded_path:
-                        dir_path = os.path.dirname(downloaded_path)
-                        possible_drivers = glob.glob(os.path.join(dir_path, "*chromedriver*"))
-                        for possible in possible_drivers:
-                            if 'THIRD_PARTY_NOTICES' not in possible and os.access(possible, os.X_OK):
-                                driver_path = possible
-                                print(f"   Found actual ChromeDriver: {driver_path}")
-                                break
-                    else:
-                        driver_path = downloaded_path
+                    # Find the actual executable
+                    driver_path = self.find_chromedriver_executable(downloaded_path)
                     
                     if not driver_path:
-                        raise Exception("Could not locate ChromeDriver after download")
+                        raise Exception("Could not locate ChromeDriver executable after download")
                     
-                    if driver_path and os.path.exists(driver_path):
-                        # Ensure executable permissions
-                        os.chmod(driver_path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
-                        print(f"   ✅ Using compatible ChromeDriver: {driver_path}")
-                        
-                        # Verify ChromeDriver version
-                        try:
-                            result = subprocess.run([driver_path, "--version"], 
-                                                  capture_output=True, text=True, timeout=10)
-                            if result.returncode == 0:
-                                print(f"   ✅ ChromeDriver version: {result.stdout.strip()}")
-                        except Exception as e:
-                            print(f"   ⚠️  ChromeDriver version check failed: {str(e)}")
-                        
-                    else:
-                        raise Exception("Could not locate ChromeDriver after download")
+                    # Ensure executable permissions
+                    os.chmod(driver_path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
+                    print(f"   ✅ Using compatible ChromeDriver: {driver_path}")
+                    
+                    # Verify ChromeDriver version
+                    try:
+                        result = subprocess.run([driver_path, "--version"], 
+                                              capture_output=True, text=True, timeout=10)
+                        if result.returncode == 0:
+                            print(f"   ✅ ChromeDriver version: {result.stdout.strip()}")
+                    except Exception as e:
+                        print(f"   ⚠️  ChromeDriver version check failed: {str(e)}")
                     
                 except Exception as e:
                     print(f"   ❌ ChromeDriver download failed: {str(e)}")
@@ -205,20 +238,11 @@ class DriverManager:
                     downloaded_path = ChromeDriverManager().install()
                     print(f"   Downloaded ChromeDriver to: {downloaded_path}")
                     
-                    # Handle THIRD_PARTY_NOTICES issue
-                    if 'THIRD_PARTY_NOTICES' in downloaded_path:
-                        dir_path = os.path.dirname(downloaded_path)
-                        possible_drivers = glob.glob(os.path.join(dir_path, "*chromedriver*"))
-                        for possible in possible_drivers:
-                            if 'THIRD_PARTY_NOTICES' not in possible and os.access(possible, os.X_OK):
-                                driver_path = possible
-                                print(f"   Found actual ChromeDriver: {driver_path}")
-                                break
-                    else:
-                        driver_path = downloaded_path
+                    # Find the actual executable
+                    driver_path = self.find_chromedriver_executable(downloaded_path)
                     
                     if not driver_path:
-                        raise Exception("Could not locate ChromeDriver after download")
+                        raise Exception("Could not locate ChromeDriver executable after download")
                     
                     # Ensure executable permissions
                     os.chmod(driver_path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
