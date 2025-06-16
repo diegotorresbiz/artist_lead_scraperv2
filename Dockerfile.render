@@ -24,10 +24,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy all Python files explicitly
+# Copy all Python files that actually exist in the repository
 COPY api_outreach_service.py .
 COPY artist_lead_scraper.py .
-COPY youtube_api_scraper.py .
+COPY youtube_scraper.py .
 COPY driver_manager.py .
 COPY soundcloud_scraper.py .
 COPY artist_info_extractor.py .
