@@ -2,9 +2,10 @@
 services:
   - type: web
     name: outreach-agent-scraper
-    env: python
-    buildCommand: pip install -r railway_requirements.txt
-    startCommand: python api_outreach_service.py
+    env: docker
+    dockerfilePath: ./Dockerfile.render
+    plan: starter
+    region: oregon
     envVars:
       - key: YOUTUBE_API_KEY
         sync: false
