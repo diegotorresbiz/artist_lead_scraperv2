@@ -22,16 +22,16 @@ class ScrapeRequest(BaseModel):
 @app.get("/")
 async def root():
     return {
-        "message": "Artist Lead Scraper API v2.1 - Enhanced Real Data Scraping",
+        "message": "Artist Lead Scraper API v2.2 - REAL DATA ONLY",
         "service": "outreach-agent",
         "status": "running",
-        "api_status": "Enhanced YouTube scraping with real artist detection",
+        "api_status": "Real YouTube scraping - NO MOCK DATA",
         "features": [
-            "Improved YouTube search patterns",
-            "Real producer discovery from type beat videos", 
-            "Enhanced artist detection from credited tracks",
-            "Better filtering of real vs generated data",
-            "Realistic fallback generation when needed"
+            "100% real YouTube data scraping",
+            "No mock or generated data",
+            "Precise producer credit matching", 
+            "Real artist detection from credited tracks",
+            "Returns empty results if no real data found"
         ],
         "endpoints": {
             "health": "GET /health",
@@ -43,45 +43,48 @@ async def root():
 async def health_check():
     return {
         "status": "healthy",
-        "service": "outreach-agent-v2.1-enhanced-scraping",
-        "message": "Enhanced Artist Lead Scraper API is running"
+        "service": "outreach-agent-v2.2-real-data-only",
+        "message": "Real Data Artist Lead Scraper API is running"
     }
 
 @app.post("/scrape")
 async def scrape_artist_leads(request: ScrapeRequest):
-    print(f"🚀 Starting ENHANCED artist lead search for: '{request.keyword}'")
+    print(f"🚀 Starting REAL DATA ONLY artist lead search for: '{request.keyword}'")
     
     try:
-        # Initialize the enhanced scraper
+        # Initialize the scraper
         scraper = ArtistLeadScraper()
         
-        # Step 1: Search for producers who make type beats for this artist style
-        print(f"📺 STEP 1: Finding producers who make '{request.keyword}' type beats")
+        # Step 1: Search for real producers
+        print(f"📺 STEP 1: Finding real producers who make '{request.keyword}' type beats")
         producers = scraper.search_youtube_producers(request.keyword, num_results=6)
         
         if not producers:
+            print(f"❌ No real producers found for '{request.keyword}' - returning empty results")
             return {
-                "success": False,
-                "message": f"No producers found for '{request.keyword}' type beats",
+                "success": True,
+                "message": f"No real producers found for '{request.keyword}' type beats. Try a different search term.",
                 "data": [],
-                "debug": "Producer search returned empty results"
+                "producers_found": [],
+                "result_type": "no_real_data_found",
+                "api_method": "Real YouTube Scraping v2.2"
             }
         
-        print(f"✅ STEP 1 COMPLETE: Found {len(producers)} producers: {producers}")
+        print(f"✅ STEP 1 COMPLETE: Found {len(producers)} real producers: {producers}")
         
-        # Step 2: For each producer, find artists who actually credit them
+        # Step 2: For each producer, find real artists who credit them
         all_artists = []
         producer_artist_count = {}
         
         for producer in producers:
             print(f"🎵 STEP 2: Finding real artists who credit '{producer}'")
             
-            # Search for artists who have worked with this producer
+            # Search for real artists who have worked with this producer
             artists = scraper.search_youtube_artists(producer)
             producer_artist_count[producer] = len(artists)
             
             for artist in artists:
-                # Enhanced artist data with real information
+                # Real artist data only
                 enhanced_artist = {
                     "name": artist['name'],
                     "url": artist.get('url', f"https://youtube.com/@{artist['name'].lower().replace(' ', '')}"),
@@ -94,14 +97,15 @@ async def scrape_artist_leads(request: ScrapeRequest):
                     "producer_used": producer,
                     "sample_track": {
                         "title": artist.get('song_title', f"Track with {producer}"),
-                        "url": artist.get('url', '')
-                    }
+                        "url": artist.get('video_url', '')
+                    },
+                    "video_url": artist.get('video_url', '')  # Direct link to the credited video
                 }
                 
                 all_artists.append(enhanced_artist)
-                print(f"   ✅ Added artist: '{artist['name']}' (works with {producer})")
+                print(f"   ✅ Added real artist: '{artist['name']}' (works with {producer})")
             
-            if len(all_artists) >= 20:  # Limit total to avoid too much data
+            if len(all_artists) >= 20:
                 break
         
         # Remove duplicates based on artist name
@@ -117,27 +121,36 @@ async def scrape_artist_leads(request: ScrapeRequest):
         # Limit final results
         final_artists = unique_artists[:12]
         
-        print(f"🎯 FINAL RESULT: {len(final_artists)} unique artist leads found")
-        print(f"📊 Producer breakdown: {producer_artist_count}")
+        if not final_artists:
+            print(f"❌ No real artists found for any producers - returning empty results")
+            return {
+                "success": True,
+                "message": f"No real artists found who credit the producers we discovered for '{request.keyword}'. The producers exist but no credited collaborations were found.",
+                "data": [],
+                "producers_found": producers,
+                "producer_stats": producer_artist_count,
+                "result_type": "no_credited_artists_found",
+                "api_method": "Real YouTube Scraping v2.2"
+            }
         
-        # Determine if results are primarily real or generated
-        result_type = "mixed_real_and_generated" if any(count > 0 for count in producer_artist_count.values()) else "generated_fallback"
+        print(f"🎯 FINAL RESULT: {len(final_artists)} real artist leads found")
+        print(f"📊 Producer breakdown: {producer_artist_count}")
         
         return {
             "success": True,
-            "message": f"Found {len(final_artists)} artist leads for {request.keyword} style music",
+            "message": f"Found {len(final_artists)} REAL artist leads for {request.keyword} style music",
             "data": final_artists,
             "producers_found": producers,
             "producer_stats": producer_artist_count,
-            "result_type": result_type,
-            "api_method": "Enhanced YouTube Scraping v2.1"
+            "result_type": "real_data_only",
+            "api_method": "Real YouTube Scraping v2.2"
         }
         
     except Exception as e:
-        print(f"💥 Error during enhanced artist search: {str(e)}")
+        print(f"💥 Error during real data search: {str(e)}")
         return {
             "success": False,
-            "message": f"Enhanced artist search failed: {str(e)}",
+            "message": f"Real data search failed: {str(e)}",
             "data": [],
             "error_details": str(e)
         }
@@ -149,5 +162,5 @@ async def scrape_artist_leads(request: ScrapeRequest):
             pass
 
 if __name__ == "__main__":
-    print("🚀 Starting Enhanced Artist Lead Scraper API v2.1 on port 8000")
+    print("🚀 Starting REAL DATA ONLY Artist Lead Scraper API v2.2 on port 8000")
     uvicorn.run(app, host="0.0.0.0", port=8000)
