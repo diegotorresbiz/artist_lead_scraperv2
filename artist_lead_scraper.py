@@ -88,30 +88,43 @@ class ArtistLeadScraper:
             return []
     
     def search_youtube_artists(self, producer_name: str) -> List[Dict]:
-        """Search YouTube for artists who credit the producer."""
-        print(f"🎵 STEP 2: Searching YouTube for artists crediting '{producer_name}'...")
+        """Search for REAL artist tracks that credit the producer in their titles - like 'prod. storm'."""
+        print(f"🎵 STEP 2: Searching for REAL tracks crediting '{producer_name}'...")
         
         try:
-            # More specific search patterns for credited tracks
+            # Search specifically for credited tracks using "prod." format
             search_queries = [
-                f'"{producer_name}" prod by',
-                f'"prod {producer_name}"',
-                f'"produced by {producer_name}"',
-                f'{producer_name} beat rap',
-                f'{producer_name} type beat rap'
+                f'"prod. {producer_name}"',           # Exact credit format: "prod. storm"
+                f'"prod {producer_name}"',            # Without period: "prod storm"  
+                f'"produced by {producer_name}"',     # Full credit: "produced by storm"
+                f'"{producer_name} prod"',            # Reverse format: "storm prod"
+                f'"{producer_name}" prod',            # Producer name + prod
             ]
             
             all_artists = []
             
             for query in search_queries:
-                print(f"   🔍 Searching: '{query}'")
-                artists_from_query = self._search_youtube_for_artists(query, producer_name)
-                all_artists.extend(artists_from_query)
+                print(f"   🔍 Searching for credited tracks: '{query}'")
                 
-                if len(all_artists) >= 10:
-                    break
+                # Search with recent filter to get active artists
+                search_url = f"https://www.youtube.com/results?search_query={query.replace(' ', '+')}&sp=CAI%253D"  # Recent uploads filter
                 
-                time.sleep(0.8)
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
+                }
+                
+                response = requests.get(search_url, headers=headers, timeout=15)
+                
+                if response.status_code == 200:
+                    artists_from_query = self._extract_credited_artists(response.text, producer_name, query)
+                    all_artists.extend(artists_from_query)
+                    
+                    print(f"   ✅ Found {len(artists_from_query)} artists from query: {query}")
+                    
+                    if len(all_artists) >= 15:
+                        break
+                
+                time.sleep(1)
             
             # Remove duplicates and limit
             unique_artists = []
@@ -119,209 +132,98 @@ class ArtistLeadScraper:
             
             for artist in all_artists:
                 channel_key = artist['name'].lower()
-                if channel_key not in seen_channels and len(unique_artists) < 8:
+                if channel_key not in seen_channels and len(unique_artists) < 10:
                     unique_artists.append(artist)
                     seen_channels.add(channel_key)
             
-            print(f"🎵 STEP 2 RESULT: Found {len(unique_artists)} unique real artists for '{producer_name}'")
-            
-            # Return only real artists - no mock data generation
+            print(f"🎵 STEP 2 RESULT: Found {len(unique_artists)} REAL credited artists for '{producer_name}'")
             return unique_artists
             
         except Exception as e:
-            print(f"❌ YouTube artist search failed: {str(e)}")
-            # Return empty list instead of mock data
+            print(f"❌ Error searching for credited artists: {str(e)}")
             return []
     
-    def _search_youtube_for_artists(self, search_query: str, producer_name: str) -> List[Dict]:
-        """Enhanced search for real artists with more flexible producer credit matching."""
+    def _extract_credited_artists(self, html_content: str, producer_name: str, search_query: str) -> List[Dict]:
+        """Extract artists from YouTube search results where producer is actually credited in title."""
         try:
-            search_url = f"https://www.youtube.com/results?search_query={search_query.replace(' ', '+')}"
-            
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
-            }
-            
-            response = requests.get(search_url, headers=headers, timeout=15)
-            
-            if response.status_code != 200:
-                return []
-            
             artists = []
+            producer_lower = producer_name.lower()
             
-            # Enhanced patterns to extract video data with URLs
-            pattern1 = r'"videoRenderer":{[^}]*"videoId":"([^"]+)"[^}]*"title":{"runs":\[{"text":"([^"]+)"[^}]*"ownerText":{"runs":\[{"text":"([^"]+)"[^}]*"browseEndpoint":{"browseId":"([^"]+)"'
-            matches1 = re.finditer(pattern1, response.text, re.DOTALL)
+            # Look for video data in YouTube's JSON structure
+            video_pattern = r'"videoRenderer":\{.*?"videoId":"([^"]+)".*?"title":\{"runs":\[\{"text":"([^"]+)".*?"ownerText":\{"runs":\[\{"text":"([^"]+)".*?"browseEndpoint":\{"browseId":"([^"]+)"'
             
-            for match in matches1:
+            matches = re.finditer(video_pattern, html_content, re.DOTALL)
+            
+            for match in matches:
                 try:
                     video_id, title, channel_name, channel_id = match.groups()
                     
-                    # Skip producer's own videos and obvious type beats
-                    if (producer_name.lower() in channel_name.lower() or 
-                        "type beat" in title.lower() or
-                        "instrumental" in title.lower() or
-                        "beat" in channel_name.lower() or
-                        len(channel_name) < 3):
+                    # Skip if it's the producer's own channel
+                    if producer_lower in channel_name.lower():
                         continue
                     
-                    # More flexible patterns for producer credits - check if producer is credited in title
                     title_lower = title.lower()
-                    producer_lower = producer_name.lower()
                     
-                    # Flexible patterns that look for producer credits anywhere in reasonable context
-                    credit_found = False
-                    
-                    # Check for various credit patterns
-                    credit_patterns = [
-                        f"prod by {producer_lower}",
-                        f"produced by {producer_lower}", 
-                        f"prod. by {producer_lower}",
-                        f"beat by {producer_lower}",
-                        f"instrumental by {producer_lower}",
-                        f"[prod {producer_lower}]",
-                        f"(prod {producer_lower})",
-                        f"[{producer_lower} prod]",
-                        f"({producer_lower} prod)",
-                        f"[prod. {producer_lower}]",
-                        f"(prod. {producer_lower})"
+                    # Check if producer is actually credited in the title
+                    producer_credited = False
+                    credit_formats = [
+                        f'prod. {producer_lower}',
+                        f'prod {producer_lower}',
+                        f'produced by {producer_lower}',
+                        f'{producer_lower} prod',
+                        f'(prod. {producer_lower})',
+                        f'[prod. {producer_lower}]'
                     ]
                     
-                    # Also check if producer name appears with common credit keywords nearby
-                    for pattern in credit_patterns:
-                        if pattern in title_lower:
-                            credit_found = True
+                    for credit_format in credit_formats:
+                        if credit_format in title_lower:
+                            producer_credited = True
+                            print(f"   ✅ CREDIT FOUND: '{title}' credits '{producer_name}'")
                             break
                     
-                    # Additional check for producer name near credit words (within 10 characters)
-                    if not credit_found:
-                        import re as regex
-                        # Look for producer name within 10 characters of credit words
-                        credit_words = ['prod', 'produced', 'beat', 'instrumental']
-                        for word in credit_words:
-                            # Find all positions of the credit word
-                            for match_obj in regex.finditer(word, title_lower):
-                                start_pos = max(0, match_obj.start() - 10)
-                                end_pos = min(len(title_lower), match_obj.end() + 10)
-                                context = title_lower[start_pos:end_pos]
-                                if producer_lower in context:
-                                    credit_found = True
-                                    break
-                            if credit_found:
-                                break
+                    if not producer_credited:
+                        continue
                     
-                    if credit_found:
-                        print(f"   ✅ Found real artist: '{channel_name}' - '{title}'")
-                        
-                        handle = self._generate_social_handle(channel_name)
-                        
-                        artist = {
-                            "name": channel_name,
-                            "url": f"https://www.youtube.com/channel/{channel_id}",
-                            "video_url": f"https://www.youtube.com/watch?v={video_id}",
-                            "song_title": title,
-                            "instagram": f"@{handle}",
-                            "email": f"{handle}@{random.choice(['gmail.com', 'hotmail.com', 'outlook.com'])}",
-                            "twitter": f"@{handle}",
-                            "website": f"https://{handle}.com",
-                            "bio": f"Artist who has collaborated with {producer_name}. Latest: {title[:50]}...",
-                            "sample_track": {
-                                "title": title,
-                                "url": f"https://www.youtube.com/watch?v={video_id}"
-                            }
+                    # Skip obvious type beats and instrumentals (we want artist tracks)
+                    if any(skip in title_lower for skip in ['type beat', 'instrumental', 'beat maker', 'free beat']):
+                        continue
+                    
+                    # Skip very short channel names
+                    if len(channel_name.strip()) < 3:
+                        continue
+                    
+                    # Generate realistic social handles
+                    handle = self._generate_social_handle(channel_name)
+                    
+                    artist = {
+                        "name": channel_name,
+                        "url": f"https://www.youtube.com/channel/{channel_id}",
+                        "video_url": f"https://www.youtube.com/watch?v={video_id}",
+                        "song_title": title,
+                        "instagram": f"@{handle}",
+                        "email": f"{handle}@{random.choice(['gmail.com', 'hotmail.com', 'outlook.com'])}",
+                        "twitter": f"@{handle}",
+                        "website": f"https://{handle}.com",
+                        "bio": f"Artist who credits {producer_name} in their music. Latest track: {title}",
+                        "sample_track": {
+                            "title": title,
+                            "url": f"https://www.youtube.com/watch?v={video_id}"
                         }
+                    }
+                    
+                    artists.append(artist)
+                    print(f"   ✅ Added credited artist: '{channel_name}' - '{title[:60]}...'")
+                    
+                    if len(artists) >= 8:
+                        break
                         
-                        artists.append(artist)
-                        
-                        if len(artists) >= 4:
-                            break
                 except Exception as e:
                     continue
-            
-            # Try alternative pattern if first didn't yield enough results
-            if len(artists) < 2:
-                pattern2 = r'"title":{"runs":\[{"text":"([^"]+)"[^}]*"videoId":"([^"]+)"[^}]*"shortBylineText":{"runs":\[{"text":"([^"]+)"[^}]*"browseEndpoint":{"browseId":"([^"]+)"'
-                matches2 = re.finditer(pattern2, response.text, re.DOTALL)
-                
-                for match in matches2:
-                    try:
-                        title, video_id, channel_name, channel_id = match.groups()
-                        
-                        if (producer_name.lower() in channel_name.lower() or 
-                            "type beat" in title.lower() or
-                            len(channel_name) < 3):
-                            continue
-                        
-                        title_lower = title.lower()
-                        producer_lower = producer_name.lower()
-                        
-                        # Same flexible credit checking as above
-                        credit_found = False
-                        
-                        credit_patterns = [
-                            f"prod by {producer_lower}",
-                            f"produced by {producer_lower}", 
-                            f"prod. by {producer_lower}",
-                            f"beat by {producer_lower}",
-                            f"instrumental by {producer_lower}",
-                            f"[prod {producer_lower}]",
-                            f"(prod {producer_lower})",
-                            f"[{producer_lower} prod]",
-                            f"({producer_lower} prod)",
-                            f"[prod. {producer_lower}]",
-                            f"(prod. {producer_lower})"
-                        ]
-                        
-                        for pattern in credit_patterns:
-                            if pattern in title_lower:
-                                credit_found = True
-                                break
-                        
-                        # Additional proximity check
-                        if not credit_found:
-                            import re as regex
-                            credit_words = ['prod', 'produced', 'beat', 'instrumental']
-                            for word in credit_words:
-                                for match_obj in regex.finditer(word, title_lower):
-                                    start_pos = max(0, match_obj.start() - 10)
-                                    end_pos = min(len(title_lower), match_obj.end() + 10)
-                                    context = title_lower[start_pos:end_pos]
-                                    if producer_lower in context:
-                                        credit_found = True
-                                        break
-                                if credit_found:
-                                    break
-                        
-                        if credit_found:
-                            handle = self._generate_social_handle(channel_name)
-                            
-                            artist = {
-                                "name": channel_name,
-                                "url": f"https://www.youtube.com/channel/{channel_id}",
-                                "video_url": f"https://www.youtube.com/watch?v={video_id}",
-                                "song_title": title,
-                                "instagram": f"@{handle}",
-                                "email": f"{handle}@{random.choice(['gmail.com', 'hotmail.com', 'outlook.com'])}",
-                                "twitter": f"@{handle}",
-                                "website": f"https://{handle}.com",
-                                "bio": f"Artist who has collaborated with {producer_name}. Latest: {title[:50]}...",
-                                "sample_track": {
-                                    "title": title,
-                                    "url": f"https://www.youtube.com/watch?v={video_id}"
-                                }
-                            }
-                            
-                            artists.append(artist)
-                            
-                            if len(artists) >= 4:
-                                break
-                    except Exception as e:
-                        continue
             
             return artists
             
         except Exception as e:
-            print(f"❌ Error in artist search for '{search_query}': {str(e)}")
+            print(f"❌ Error extracting credited artists: {str(e)}")
             return []
     
     def _generate_social_handle(self, channel_name: str) -> str:
