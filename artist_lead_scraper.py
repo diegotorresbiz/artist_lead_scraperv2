@@ -138,7 +138,7 @@ class ArtistLeadScraper:
             return self._generate_realistic_artists(producer_name, 3)
     
     def _search_youtube_for_artists(self, search_query: str, producer_name: str) -> List[Dict]:
-        """Enhanced search for real artists."""
+        """Enhanced search for real artists with precise producer credit matching."""
         try:
             search_url = f"https://www.youtube.com/results?search_query={search_query.replace(' ', '+')}"
             
@@ -153,54 +153,111 @@ class ArtistLeadScraper:
             
             artists = []
             
-            # More robust patterns for video data extraction
+            # Enhanced patterns to extract video data with URLs
             video_patterns = [
-                r'"videoRenderer":{.*?"title":{"runs":\[{"text":"([^"]+)".*?"ownerText":{"runs":\[{"text":"([^"]+)".*?"browseEndpoint":{"browseId":"([^"]+)"',
-                r'"title":{"runs":\[{"text":"([^"]+)".*?"shortBylineText":{"runs":\[{"text":"([^"]+)".*?"browseEndpoint":{"browseId":"([^"]+)"'
+                r'"videoRenderer":{[^}]*"videoId":"([^"]+)"[^}]*"title":{"runs":\[{"text":"([^"]+)"[^}]*"ownerText":{"runs":\[{"text":"([^"]+)"[^}]*"browseEndpoint":{"browseId":"([^"]+)"',
+                r'"title":{"runs":\[{"text":"([^"]+)"[^}]*"videoId":"([^"]+)"[^}]*"shortBylineText":{"runs":\[{"text":"([^"]+)"[^}]*"browseEndpoint":{"browseId":"([^"]+)"'
             ]
             
-            for pattern in video_patterns:
-                matches = re.finditer(pattern, response.text, re.DOTALL)
-                
-                for match in matches:
-                    try:
-                        title, channel_name, channel_id = match.groups()
+            # First pattern: videoId, title, channel_name, channel_id
+            pattern1 = r'"videoRenderer":{[^}]*"videoId":"([^"]+)"[^}]*"title":{"runs":\[{"text":"([^"]+)"[^}]*"ownerText":{"runs":\[{"text":"([^"]+)"[^}]*"browseEndpoint":{"browseId":"([^"]+)"'
+            matches1 = re.finditer(pattern1, response.text, re.DOTALL)
+            
+            for match in matches1:
+                try:
+                    video_id, title, channel_name, channel_id = match.groups()
+                    
+                    # Skip producer's own videos and obvious type beats
+                    if (producer_name.lower() in channel_name.lower() or 
+                        "type beat" in title.lower() or
+                        "instrumental" in title.lower() or
+                        "beat" in channel_name.lower() or
+                        len(channel_name) < 3):
+                        continue
+                    
+                    # FIXED: Check for exact "prod by [producer]" or "prod. by [producer]" pattern
+                    title_lower = title.lower()
+                    producer_lower = producer_name.lower()
+                    
+                    # Create precise patterns that must appear as continuous phrases
+                    precise_patterns = [
+                        rf"\bprod\.?\s+by\s+{re.escape(producer_lower)}\b",
+                        rf"\bproduced\s+by\s+{re.escape(producer_lower)}\b",
+                        rf"\({re.escape(producer_lower)}\s+prod\.?\)",
+                        rf"\[prod\.?\s+by\s+{re.escape(producer_lower)}\]"
+                    ]
+                    
+                    # Check if any of the precise patterns match
+                    if any(re.search(pattern, title_lower) for pattern in precise_patterns):
+                        print(f"   ✅ Found real artist: '{channel_name}' - '{title}'")
                         
-                        # Skip producer's own videos and obvious type beats
+                        handle = self._generate_social_handle(channel_name)
+                        
+                        artist = {
+                            "name": channel_name,
+                            "url": f"https://www.youtube.com/channel/{channel_id}",
+                            "video_url": f"https://www.youtube.com/watch?v={video_id}",  # Direct link to the credited video
+                            "song_title": title,
+                            "instagram": f"@{handle}",
+                            "email": f"{handle}@{random.choice(['gmail.com', 'hotmail.com', 'outlook.com'])}",
+                            "twitter": f"@{handle}",
+                            "website": f"https://{handle}.com",
+                            "bio": f"Artist who has collaborated with {producer_name}. Latest: {title[:50]}...",
+                            "sample_track": {
+                                "title": title,
+                                "url": f"https://www.youtube.com/watch?v={video_id}"  # Link to specific credited track
+                            }
+                        }
+                        
+                        artists.append(artist)
+                        
+                        if len(artists) >= 4:
+                            break
+                except Exception as e:
+                    continue
+            
+            # Try alternative pattern if first didn't yield enough results
+            if len(artists) < 2:
+                pattern2 = r'"title":{"runs":\[{"text":"([^"]+)"[^}]*"videoId":"([^"]+)"[^}]*"shortBylineText":{"runs":\[{"text":"([^"]+)"[^}]*"browseEndpoint":{"browseId":"([^"]+)"'
+                matches2 = re.finditer(pattern2, response.text, re.DOTALL)
+                
+                for match in matches2:
+                    try:
+                        title, video_id, channel_name, channel_id = match.groups()
+                        
                         if (producer_name.lower() in channel_name.lower() or 
                             "type beat" in title.lower() or
-                            "instrumental" in title.lower() or
-                            "beat" in channel_name.lower() or
                             len(channel_name) < 3):
                             continue
                         
-                        # Check if title actually credits the producer
                         title_lower = title.lower()
                         producer_lower = producer_name.lower()
                         
-                        credit_indicators = [
-                            f"prod. {producer_lower}",
-                            f"prod {producer_lower}",
-                            f"produced by {producer_lower}",
-                            f"({producer_lower})",
-                            f"ft. {producer_lower}",
-                            producer_lower
+                        # Same precise patterns
+                        precise_patterns = [
+                            rf"\bprod\.?\s+by\s+{re.escape(producer_lower)}\b",
+                            rf"\bproduced\s+by\s+{re.escape(producer_lower)}\b",
+                            rf"\({re.escape(producer_lower)}\s+prod\.?\)",
+                            rf"\[prod\.?\s+by\s+{re.escape(producer_lower)}\]"
                         ]
                         
-                        if any(indicator in title_lower for indicator in credit_indicators):
-                            print(f"   ✅ Found real artist: '{channel_name}' - '{title}'")
-                            
+                        if any(re.search(pattern, title_lower) for pattern in precise_patterns):
                             handle = self._generate_social_handle(channel_name)
                             
                             artist = {
                                 "name": channel_name,
                                 "url": f"https://www.youtube.com/channel/{channel_id}",
+                                "video_url": f"https://www.youtube.com/watch?v={video_id}",
                                 "song_title": title,
                                 "instagram": f"@{handle}",
                                 "email": f"{handle}@{random.choice(['gmail.com', 'hotmail.com', 'outlook.com'])}",
                                 "twitter": f"@{handle}",
                                 "website": f"https://{handle}.com",
-                                "bio": f"Artist who has collaborated with {producer_name}. Latest: {title[:50]}..."
+                                "bio": f"Artist who has collaborated with {producer_name}. Latest: {title[:50]}...",
+                                "sample_track": {
+                                    "title": title,
+                                    "url": f"https://www.youtube.com/watch?v={video_id}"
+                                }
                             }
                             
                             artists.append(artist)
@@ -209,9 +266,6 @@ class ArtistLeadScraper:
                                 break
                     except Exception as e:
                         continue
-                
-                if len(artists) >= 4:
-                    break
             
             return artists
             
@@ -256,12 +310,17 @@ class ArtistLeadScraper:
             artist = {
                 "name": artist_name,
                 "url": f"https://youtube.com/@{handle}",
+                "video_url": f"https://youtube.com/@{handle}",
                 "email": f"{handle}@{random.choice(['gmail.com', 'hotmail.com', 'yahoo.com'])}",
                 "instagram": f"@{handle}",
                 "twitter": f"@{handle}",
                 "website": f"https://{handle}.bandcamp.com",
                 "bio": f"Independent artist who works with {producer_name}. Building my catalog with quality beats.",
-                "song_title": f"New Track (prod. {producer_name})"
+                "song_title": f"New Track (prod. {producer_name})",
+                "sample_track": {
+                    "title": f"New Track (prod. {producer_name})",
+                    "url": f"https://youtube.com/@{handle}"
+                }
             }
             artists.append(artist)
         
