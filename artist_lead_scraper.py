@@ -74,19 +74,19 @@ class ArtistLeadScraper:
                 if len(all_producers) >= num_results:
                     break
                 
-                time.sleep(1)  # Longer delay to avoid rate limiting
+                time.sleep(1)
             
-            # Return best producers
+            # Return best producers - ONLY REAL ONES
             unique_producers = list(dict.fromkeys(all_producers))
             final_producers = unique_producers[:num_results]
             
-            print(f"🎯 STEP 1 COMPLETE: Found {len(final_producers)} producers: {final_producers}")
+            print(f"🎯 STEP 1 COMPLETE: Found {len(final_producers)} real producers: {final_producers}")
             return final_producers
             
         except Exception as e:
             print(f"❌ Error in YouTube search: {str(e)}")
-            # Return some known producers as fallback
-            return ["Internet Money", "Nick Mira", "Wheezy", "Metro Boomin"][:num_results]
+            # Return empty list instead of mock data
+            return []
     
     def search_youtube_artists(self, producer_name: str) -> List[Dict]:
         """Search YouTube for artists who credit the producer."""
@@ -124,18 +124,15 @@ class ArtistLeadScraper:
                     unique_artists.append(artist)
                     seen_channels.add(channel_key)
             
-            print(f"🎵 STEP 2 RESULT: Found {len(unique_artists)} unique artists for '{producer_name}'")
+            print(f"🎵 STEP 2 RESULT: Found {len(unique_artists)} unique real artists for '{producer_name}'")
             
-            # If no real artists found, generate some realistic ones
-            if not unique_artists:
-                print(f"❌ No artists found for '{producer_name}', generating realistic alternatives...")
-                return self._generate_realistic_artists(producer_name, 3)
-            
+            # Return only real artists - no mock data generation
             return unique_artists
             
         except Exception as e:
             print(f"❌ YouTube artist search failed: {str(e)}")
-            return self._generate_realistic_artists(producer_name, 3)
+            # Return empty list instead of mock data
+            return []
     
     def _search_youtube_for_artists(self, search_query: str, producer_name: str) -> List[Dict]:
         """Enhanced search for real artists with precise producer credit matching."""
@@ -154,12 +151,6 @@ class ArtistLeadScraper:
             artists = []
             
             # Enhanced patterns to extract video data with URLs
-            video_patterns = [
-                r'"videoRenderer":{[^}]*"videoId":"([^"]+)"[^}]*"title":{"runs":\[{"text":"([^"]+)"[^}]*"ownerText":{"runs":\[{"text":"([^"]+)"[^}]*"browseEndpoint":{"browseId":"([^"]+)"',
-                r'"title":{"runs":\[{"text":"([^"]+)"[^}]*"videoId":"([^"]+)"[^}]*"shortBylineText":{"runs":\[{"text":"([^"]+)"[^}]*"browseEndpoint":{"browseId":"([^"]+)"'
-            ]
-            
-            # First pattern: videoId, title, channel_name, channel_id
             pattern1 = r'"videoRenderer":{[^}]*"videoId":"([^"]+)"[^}]*"title":{"runs":\[{"text":"([^"]+)"[^}]*"ownerText":{"runs":\[{"text":"([^"]+)"[^}]*"browseEndpoint":{"browseId":"([^"]+)"'
             matches1 = re.finditer(pattern1, response.text, re.DOTALL)
             
@@ -175,20 +166,24 @@ class ArtistLeadScraper:
                         len(channel_name) < 3):
                         continue
                     
-                    # FIXED: Check for exact "prod by [producer]" or "prod. by [producer]" pattern
+                    # More precise patterns for exact producer credit order
                     title_lower = title.lower()
                     producer_lower = producer_name.lower()
                     
-                    # Create precise patterns that must appear as continuous phrases
-                    precise_patterns = [
-                        rf"\bprod\.?\s+by\s+{re.escape(producer_lower)}\b",
-                        rf"\bproduced\s+by\s+{re.escape(producer_lower)}\b",
-                        rf"\({re.escape(producer_lower)}\s+prod\.?\)",
-                        rf"\[prod\.?\s+by\s+{re.escape(producer_lower)}\]"
+                    # Precise patterns that maintain exact order
+                    credit_patterns = [
+                        rf"\bprod\.?\s+by\s+{re.escape(producer_lower)}\b",  # "prod by producer" or "prod. by producer"
+                        rf"\bproduced\s+by\s+{re.escape(producer_lower)}\b",  # "produced by producer"
+                        rf"\[prod\.?\s+{re.escape(producer_lower)}\]",  # "[prod producer]" or "[prod. producer]"
+                        rf"\(prod\.?\s+{re.escape(producer_lower)}\)",  # "(prod producer)" or "(prod. producer)"
+                        rf"\[{re.escape(producer_lower)}\s+prod\.?\]",  # "[producer prod]" or "[producer prod.]"
+                        rf"\({re.escape(producer_lower)}\s+prod\.?\)",  # "(producer prod)" or "(producer prod.)"
+                        rf"\bbeat\s+by\s+{re.escape(producer_lower)}\b",     # "beat by producer"
+                        rf"\binstrumental\s+by\s+{re.escape(producer_lower)}\b"  # "instrumental by producer"
                     ]
                     
-                    # Check if any of the precise patterns match
-                    if any(re.search(pattern, title_lower) for pattern in precise_patterns):
+                    # Check if any of the credit patterns match
+                    if any(re.search(pattern, title_lower) for pattern in credit_patterns):
                         print(f"   ✅ Found real artist: '{channel_name}' - '{title}'")
                         
                         handle = self._generate_social_handle(channel_name)
@@ -196,7 +191,7 @@ class ArtistLeadScraper:
                         artist = {
                             "name": channel_name,
                             "url": f"https://www.youtube.com/channel/{channel_id}",
-                            "video_url": f"https://www.youtube.com/watch?v={video_id}",  # Direct link to the credited video
+                            "video_url": f"https://www.youtube.com/watch?v={video_id}",
                             "song_title": title,
                             "instagram": f"@{handle}",
                             "email": f"{handle}@{random.choice(['gmail.com', 'hotmail.com', 'outlook.com'])}",
@@ -205,7 +200,7 @@ class ArtistLeadScraper:
                             "bio": f"Artist who has collaborated with {producer_name}. Latest: {title[:50]}...",
                             "sample_track": {
                                 "title": title,
-                                "url": f"https://www.youtube.com/watch?v={video_id}"  # Link to specific credited track
+                                "url": f"https://www.youtube.com/watch?v={video_id}"
                             }
                         }
                         
@@ -234,14 +229,18 @@ class ArtistLeadScraper:
                         producer_lower = producer_name.lower()
                         
                         # Same precise patterns
-                        precise_patterns = [
+                        credit_patterns = [
                             rf"\bprod\.?\s+by\s+{re.escape(producer_lower)}\b",
                             rf"\bproduced\s+by\s+{re.escape(producer_lower)}\b",
+                            rf"\[prod\.?\s+{re.escape(producer_lower)}\]",
+                            rf"\(prod\.?\s+{re.escape(producer_lower)}\)",
+                            rf"\[{re.escape(producer_lower)}\s+prod\.?\]",
                             rf"\({re.escape(producer_lower)}\s+prod\.?\)",
-                            rf"\[prod\.?\s+by\s+{re.escape(producer_lower)}\]"
+                            rf"\bbeat\s+by\s+{re.escape(producer_lower)}\b",
+                            rf"\binstrumental\s+by\s+{re.escape(producer_lower)}\b"
                         ]
                         
-                        if any(re.search(pattern, title_lower) for pattern in precise_patterns):
+                        if any(re.search(pattern, title_lower) for pattern in credit_patterns):
                             handle = self._generate_social_handle(channel_name)
                             
                             artist = {
@@ -286,45 +285,6 @@ class ArtistLeadScraper:
             handle = handle + str(random.randint(100, 999))
         
         return handle
-    
-    def _generate_realistic_artists(self, producer_name: str, count: int) -> List[Dict]:
-        """Generate realistic artists as last resort."""
-        print(f"🎭 Generating {count} realistic artists for {producer_name}")
-        
-        # Real-sounding artist name components
-        prefixes = ["Lil", "Young", "Big", "King", "Queen", "MC", "DJ"]
-        names = ["Mike", "Jay", "Alex", "Sam", "Jordan", "Taylor", "Casey", "Blake"]
-        suffixes = ["Waves", "Flows", "Beats", "Music", "Rap", "Bars"]
-        
-        artists = []
-        
-        for i in range(count):
-            # Generate realistic name
-            if random.random() > 0.5:
-                artist_name = f"{random.choice(prefixes)} {random.choice(names)}"
-            else:
-                artist_name = f"{random.choice(names)} {random.choice(suffixes)}"
-            
-            handle = self._generate_social_handle(artist_name)
-            
-            artist = {
-                "name": artist_name,
-                "url": f"https://youtube.com/@{handle}",
-                "video_url": f"https://youtube.com/@{handle}",
-                "email": f"{handle}@{random.choice(['gmail.com', 'hotmail.com', 'yahoo.com'])}",
-                "instagram": f"@{handle}",
-                "twitter": f"@{handle}",
-                "website": f"https://{handle}.bandcamp.com",
-                "bio": f"Independent artist who works with {producer_name}. Building my catalog with quality beats.",
-                "song_title": f"New Track (prod. {producer_name})",
-                "sample_track": {
-                    "title": f"New Track (prod. {producer_name})",
-                    "url": f"https://youtube.com/@{handle}"
-                }
-            }
-            artists.append(artist)
-        
-        return artists
     
     def close(self):
         """Cleanup method."""
