@@ -85,7 +85,6 @@ class ArtistLeadScraper:
             
         except Exception as e:
             print(f"❌ Error in YouTube search: {str(e)}")
-            # Return empty list instead of mock data
             return []
     
     def search_youtube_artists(self, producer_name: str) -> List[Dict]:
@@ -135,7 +134,7 @@ class ArtistLeadScraper:
             return []
     
     def _search_youtube_for_artists(self, search_query: str, producer_name: str) -> List[Dict]:
-        """Enhanced search for real artists with precise producer credit matching."""
+        """Enhanced search for real artists with more flexible producer credit matching."""
         try:
             search_url = f"https://www.youtube.com/results?search_query={search_query.replace(' ', '+')}"
             
@@ -166,24 +165,52 @@ class ArtistLeadScraper:
                         len(channel_name) < 3):
                         continue
                     
-                    # More precise patterns for exact producer credit order
+                    # More flexible patterns for producer credits - check if producer is credited in title
                     title_lower = title.lower()
                     producer_lower = producer_name.lower()
                     
-                    # Precise patterns that maintain exact order
+                    # Flexible patterns that look for producer credits anywhere in reasonable context
+                    credit_found = False
+                    
+                    # Check for various credit patterns
                     credit_patterns = [
-                        rf"\bprod\.?\s+by\s+{re.escape(producer_lower)}\b",  # "prod by producer" or "prod. by producer"
-                        rf"\bproduced\s+by\s+{re.escape(producer_lower)}\b",  # "produced by producer"
-                        rf"\[prod\.?\s+{re.escape(producer_lower)}\]",  # "[prod producer]" or "[prod. producer]"
-                        rf"\(prod\.?\s+{re.escape(producer_lower)}\)",  # "(prod producer)" or "(prod. producer)"
-                        rf"\[{re.escape(producer_lower)}\s+prod\.?\]",  # "[producer prod]" or "[producer prod.]"
-                        rf"\({re.escape(producer_lower)}\s+prod\.?\)",  # "(producer prod)" or "(producer prod.)"
-                        rf"\bbeat\s+by\s+{re.escape(producer_lower)}\b",     # "beat by producer"
-                        rf"\binstrumental\s+by\s+{re.escape(producer_lower)}\b"  # "instrumental by producer"
+                        f"prod by {producer_lower}",
+                        f"produced by {producer_lower}", 
+                        f"prod. by {producer_lower}",
+                        f"beat by {producer_lower}",
+                        f"instrumental by {producer_lower}",
+                        f"[prod {producer_lower}]",
+                        f"(prod {producer_lower})",
+                        f"[{producer_lower} prod]",
+                        f"({producer_lower} prod)",
+                        f"[prod. {producer_lower}]",
+                        f"(prod. {producer_lower})"
                     ]
                     
-                    # Check if any of the credit patterns match
-                    if any(re.search(pattern, title_lower) for pattern in credit_patterns):
+                    # Also check if producer name appears with common credit keywords nearby
+                    for pattern in credit_patterns:
+                        if pattern in title_lower:
+                            credit_found = True
+                            break
+                    
+                    # Additional check for producer name near credit words (within 10 characters)
+                    if not credit_found:
+                        import re as regex
+                        # Look for producer name within 10 characters of credit words
+                        credit_words = ['prod', 'produced', 'beat', 'instrumental']
+                        for word in credit_words:
+                            # Find all positions of the credit word
+                            for match_obj in regex.finditer(word, title_lower):
+                                start_pos = max(0, match_obj.start() - 10)
+                                end_pos = min(len(title_lower), match_obj.end() + 10)
+                                context = title_lower[start_pos:end_pos]
+                                if producer_lower in context:
+                                    credit_found = True
+                                    break
+                            if credit_found:
+                                break
+                    
+                    if credit_found:
                         print(f"   ✅ Found real artist: '{channel_name}' - '{title}'")
                         
                         handle = self._generate_social_handle(channel_name)
@@ -228,19 +255,44 @@ class ArtistLeadScraper:
                         title_lower = title.lower()
                         producer_lower = producer_name.lower()
                         
-                        # Same precise patterns
+                        # Same flexible credit checking as above
+                        credit_found = False
+                        
                         credit_patterns = [
-                            rf"\bprod\.?\s+by\s+{re.escape(producer_lower)}\b",
-                            rf"\bproduced\s+by\s+{re.escape(producer_lower)}\b",
-                            rf"\[prod\.?\s+{re.escape(producer_lower)}\]",
-                            rf"\(prod\.?\s+{re.escape(producer_lower)}\)",
-                            rf"\[{re.escape(producer_lower)}\s+prod\.?\]",
-                            rf"\({re.escape(producer_lower)}\s+prod\.?\)",
-                            rf"\bbeat\s+by\s+{re.escape(producer_lower)}\b",
-                            rf"\binstrumental\s+by\s+{re.escape(producer_lower)}\b"
+                            f"prod by {producer_lower}",
+                            f"produced by {producer_lower}", 
+                            f"prod. by {producer_lower}",
+                            f"beat by {producer_lower}",
+                            f"instrumental by {producer_lower}",
+                            f"[prod {producer_lower}]",
+                            f"(prod {producer_lower})",
+                            f"[{producer_lower} prod]",
+                            f"({producer_lower} prod)",
+                            f"[prod. {producer_lower}]",
+                            f"(prod. {producer_lower})"
                         ]
                         
-                        if any(re.search(pattern, title_lower) for pattern in credit_patterns):
+                        for pattern in credit_patterns:
+                            if pattern in title_lower:
+                                credit_found = True
+                                break
+                        
+                        # Additional proximity check
+                        if not credit_found:
+                            import re as regex
+                            credit_words = ['prod', 'produced', 'beat', 'instrumental']
+                            for word in credit_words:
+                                for match_obj in regex.finditer(word, title_lower):
+                                    start_pos = max(0, match_obj.start() - 10)
+                                    end_pos = min(len(title_lower), match_obj.end() + 10)
+                                    context = title_lower[start_pos:end_pos]
+                                    if producer_lower in context:
+                                        credit_found = True
+                                        break
+                                if credit_found:
+                                    break
+                        
+                        if credit_found:
                             handle = self._generate_social_handle(channel_name)
                             
                             artist = {
